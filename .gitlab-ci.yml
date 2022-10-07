@@ -1,0 +1,36 @@
+image: alpine
+
+stages:
+  - build
+  - test
+
+build:
+  stage: build
+  artifacts:
+    untracked: true
+    expire_in: 1 hour
+  script:
+    - apk add --no-cache g++ musl-dev libstdc++
+    - EXIT_CODE=0
+    - >
+      for folder in $(find . -type f -name 'main.cpp' | xargs -I {} dirname {}); do
+        printf '=> Building %s\n' "$folder/main.cpp";
+        g++ -Wall -pedantic -Wno-long-long -std=c++17 -o "$folder/main" "$folder/main.cpp" && chmod +x "$folder/main" || EXIT_CODE=1;
+        printf '\n';
+      done
+    - test "$EXIT_CODE" -eq 0
+
+test:
+  stage: test
+  dependencies:
+    - build
+  script:
+    - apk add --no-cache bash libstdc++
+    - EXIT_CODE=0
+    - >
+      for folder in $(find . -type d -name 'tests' | xargs -I {} dirname {}); do
+        printf '=> Testing %s\n' "$folder";
+        bash ./test.sh -x "$folder/main" -t "$folder/tests" -q || EXIT_CODE=1;
+        printf '\n';
+      done
+    - test "$EXIT_CODE" -eq 0

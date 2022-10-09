@@ -37,39 +37,16 @@ struct std::hash<std::pair<F, S>> {
 #endif
 
 struct Room {
-    std::vector<size_t> neighbors;
+    std::vector<Place> neighbors;
     std::vector<size_t> items;
 };
 
 #define MAX_ITEMS 12
 
-struct VertexID {
-    size_t place;
-    std::bitset<MAX_ITEMS> items;
+using VertexID = std::pair<Place, std::bitset<MAX_ITEMS>>;
+using Vertex = std::pair<VertexID, std::list<Place>>;
 
-    bool operator<(const VertexID& right) const {
-        return place < right.place || items.to_ulong() < right.items.to_ulong();
-    }
-
-    bool operator==(const VertexID& right) const {
-        return place == right.place && items == right.items;
-    }
-};
-
-// doesnt compile on PT for some reason
-
-/*
-template <>
-struct std::hash<VertexID> {
-    std::size_t operator()(const VertexID& vertexID) const noexcept {
-        return vertexID.place | (vertexID.items.to_ulong() << 14);
-    }
-};
-*/
-
-using Vertex = std::pair<VertexID, std::list<size_t>>;
-
-std::list<size_t> find_path(const Map& map) {
+std::list<Place> find_path(const Map& map) {
     std::vector<Room> rooms(map.places);
 
     for (const auto& connection : map.connections) {
@@ -79,17 +56,17 @@ std::list<size_t> find_path(const Map& map) {
 
     for (size_t i = 0; i < map.items.size(); i++) {
         if (map.items[i].size() == 0)
-            return std::list<size_t>();
+            return std::list<Place>();
 
         for (const auto& place : map.items[i])
             rooms[place].items.push_back(i);
     }
 
     std::queue<Vertex> queue;
-    std::set<VertexID> visited;  // TODO unordered
+    std::unordered_set<VertexID> visited;
     std::bitset<MAX_ITEMS> allItems = (1 << map.items.size()) - 1;
 
-    queue.emplace(VertexID{map.start, 0}, std::list<size_t>());
+    queue.emplace(VertexID(map.start, 0), std::list<Place>());
 
     for (; !queue.empty(); queue.pop()) {
         auto& current = queue.front();
@@ -97,23 +74,23 @@ std::list<size_t> find_path(const Map& map) {
         if (visited.find(current.first) != visited.end())
             continue;
 
-        if (current.second.size() == 0 || current.second.back() != current.first.place)
-            current.second.push_back(current.first.place);
+        if (current.second.size() == 0 || current.second.back() != current.first.first)
+            current.second.push_back(current.first.first);
 
-        if (current.first.place == map.end && (current.first.items ^ allItems).none())
+        if (current.first.first == map.end && (current.first.second ^ allItems).none())
             return current.second;
 
-        for (const auto& neighbor : rooms[current.first.place].neighbors)
-            queue.emplace(VertexID{neighbor, current.first.items}, current.second);
+        for (const auto& neighbor : rooms[current.first.first].neighbors)
+            queue.emplace(VertexID(neighbor, current.first.second), current.second);
 
-        for (const auto& item : rooms[current.first.place].items) {
-            auto items = current.first.items;
+        for (const auto& item : rooms[current.first.first].items) {
+            auto items = current.first.second;
             items[item] = true;
-            queue.emplace(VertexID{current.first.place, items}, current.second);
+            queue.emplace(VertexID(current.first.first, items), current.second);
         }
 
         visited.insert(current.first);
     }
 
-    return std::list<size_t>();
+    return std::list<Place>();
 }

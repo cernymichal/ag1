@@ -20,7 +20,7 @@ int main() {
     for (size_t i = 0; i < examples.size(); i++) {
         auto sol = find_path(examples[i].second);
         if (sol.size() != examples[i].first) {
-            std::cout << "Wrong answer for map " << i << std::endl;
+            std::cout << "Wrong answer for map " << i << " - expected: " << examples[i].first << " got: " << sol.size() << std::endl;
             fail++;
         }
     }

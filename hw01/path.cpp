@@ -63,16 +63,14 @@ std::list<Place> find_path(const Map& map) {
     }
 
     std::queue<Vertex> queue;
-    std::unordered_set<VertexID> visited;
+    std::unordered_set<VertexID> queued;
     std::bitset<MAX_ITEMS> allItems = (1 << map.items.size()) - 1;
 
     queue.emplace(VertexID(map.start, 0), std::list<Place>());
+    queued.insert(queue.front().first);
 
     for (; !queue.empty(); queue.pop()) {
         auto& current = queue.front();
-
-        if (visited.find(current.first) != visited.end())
-            continue;
 
         if (current.second.size() == 0 || current.second.back() != current.first.first)
             current.second.push_back(current.first.first);
@@ -80,16 +78,26 @@ std::list<Place> find_path(const Map& map) {
         if (current.first.first == map.end && (current.first.second ^ allItems).none())
             return current.second;
 
-        for (const auto& neighbor : rooms[current.first.first].neighbors)
-            queue.emplace(VertexID(neighbor, current.first.second), current.second);
+        for (const auto& neighbor : rooms[current.first.first].neighbors) {
+            VertexID neighborID(neighbor, current.first.second);
+
+            if (queued.find(neighborID) == queued.end()) {
+                queue.emplace(neighborID, current.second);
+                queued.insert(neighborID);
+            }
+        }
 
         for (const auto& item : rooms[current.first.first].items) {
             auto items = current.first.second;
             items[item] = true;
-            queue.emplace(VertexID(current.first.first, items), current.second);
-        }
 
-        visited.insert(current.first);
+            VertexID neighborID(current.first.first, items);
+
+            if (queued.find(neighborID) == queued.end()) {
+                queue.emplace(neighborID, current.second);
+                queued.insert(neighborID);
+            }
+        }
     }
 
     return std::list<Place>();

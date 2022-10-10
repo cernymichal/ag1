@@ -42,9 +42,14 @@ struct Room {
 };
 
 #define MAX_ITEMS 12
+#define MAX_ROOMS 10000
 
 using VertexID = std::pair<Place, std::bitset<MAX_ITEMS>>;
 using Vertex = std::pair<VertexID, std::list<Place>>;
+
+size_t getVertexIDIndex(const VertexID& vertexID) {
+    return (vertexID.first << MAX_ITEMS) | vertexID.second.to_ulong();
+}
 
 std::list<Place> find_path(const Map& map) {
     std::vector<Room> rooms(map.places);
@@ -63,11 +68,12 @@ std::list<Place> find_path(const Map& map) {
     }
 
     std::queue<Vertex> queue;
-    std::unordered_set<VertexID> queued;
+    // std::bitset<MAX_ROOMS * (2 << MAX_ITEMS)> queued;
+    std::vector<bool> queued(map.places * (2 << MAX_ITEMS));
     std::bitset<MAX_ITEMS> allItems = (1 << map.items.size()) - 1;
 
     queue.emplace(VertexID(map.start, 0), std::list<Place>());
-    queued.insert(queue.front().first);
+    queued[getVertexIDIndex(queue.front().first)] = true;
 
     for (; !queue.empty(); queue.pop()) {
         auto& current = queue.front();
@@ -81,21 +87,26 @@ std::list<Place> find_path(const Map& map) {
         for (const auto& neighbor : rooms[current.first.first].neighbors) {
             VertexID neighborID(neighbor, current.first.second);
 
-            if (queued.find(neighborID) == queued.end()) {
+            if (!queued[getVertexIDIndex(neighborID)]) {
                 queue.emplace(neighborID, current.second);
-                queued.insert(neighborID);
+                queued[getVertexIDIndex(neighborID)] = true;
             }
         }
 
         for (const auto& item : rooms[current.first.first].items) {
+            /*
+            if (current.first.second[item])
+                continue;
+            */
+
             auto items = current.first.second;
             items[item] = true;
 
             VertexID neighborID(current.first.first, items);
 
-            if (queued.find(neighborID) == queued.end()) {
+            if (!queued[getVertexIDIndex(neighborID)]) {
                 queue.emplace(neighborID, current.second);
-                queued.insert(neighborID);
+                queued[getVertexIDIndex(neighborID)] = true;
             }
         }
     }

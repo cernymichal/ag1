@@ -36,13 +36,13 @@ struct std::hash<std::pair<F, S>> {
 
 #endif
 
+#define MAX_ITEMS 12
+#define MAX_ROOMS 10000
+
 struct Room {
     std::vector<Place> neighbors;
     std::vector<size_t> items;
 };
-
-#define MAX_ITEMS 12
-#define MAX_ROOMS 10000
 
 using VertexID = std::pair<Place, std::bitset<MAX_ITEMS>>;
 using Vertex = std::pair<VertexID, std::list<Place>>;
@@ -68,12 +68,12 @@ std::list<Place> find_path(const Map& map) {
     }
 
     std::queue<Vertex> queue;
-    // std::bitset<MAX_ROOMS * (2 << MAX_ITEMS)> queued;
-    std::vector<bool> queued(map.places * (2 << MAX_ITEMS));
+    auto queued = std::make_unique<std::bitset<MAX_ROOMS*(2UL << MAX_ITEMS)>>();
+    // std::vector<bool> queued(map.places * (2 << MAX_ITEMS));
     std::bitset<MAX_ITEMS> allItems = (1 << map.items.size()) - 1;
 
     queue.emplace(VertexID(map.start, 0), std::list<Place>());
-    queued[getVertexIDIndex(queue.front().first)] = true;
+    (*queued)[getVertexIDIndex(queue.front().first)] = true;
 
     for (; !queue.empty(); queue.pop()) {
         auto& current = queue.front();
@@ -87,9 +87,9 @@ std::list<Place> find_path(const Map& map) {
         for (const auto& neighbor : rooms[current.first.first].neighbors) {
             VertexID neighborID(neighbor, current.first.second);
 
-            if (!queued[getVertexIDIndex(neighborID)]) {
+            if (!(*queued)[getVertexIDIndex(neighborID)]) {
                 queue.emplace(neighborID, current.second);
-                queued[getVertexIDIndex(neighborID)] = true;
+                (*queued)[getVertexIDIndex(neighborID)] = true;
             }
         }
 
@@ -104,9 +104,9 @@ std::list<Place> find_path(const Map& map) {
 
             VertexID neighborID(current.first.first, items);
 
-            if (!queued[getVertexIDIndex(neighborID)]) {
+            if (!(*queued)[getVertexIDIndex(neighborID)]) {
                 queue.emplace(neighborID, current.second);
-                queued[getVertexIDIndex(neighborID)] = true;
+                (*queued)[getVertexIDIndex(neighborID)] = true;
             }
         }
     }

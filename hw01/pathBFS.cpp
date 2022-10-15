@@ -34,6 +34,13 @@ struct std::hash<std::pair<F, S>> {
     }
 };
 
+template <typename T>
+void printList(const std::list<T>& list) {
+    for (const auto& el : list)
+        std::cout << el << ", ";
+    std::cout << "\b\b" << std::endl;
+}
+
 #endif
 
 #define MAX_ITEMS 12
@@ -41,13 +48,13 @@ struct std::hash<std::pair<F, S>> {
 
 struct Room {
     std::vector<Place> neighbors;
-    std::vector<size_t> items;
+    std::bitset<MAX_ITEMS> items;
 };
 
 using VertexID = std::pair<Place, std::bitset<MAX_ITEMS>>;
 using Vertex = std::pair<VertexID, std::list<Place>>;
 
-size_t getVertexIDIndex(const VertexID& vertexID) {
+inline size_t getVertexIDIndex(const VertexID& vertexID) {
     return (vertexID.first << MAX_ITEMS) | vertexID.second.to_ulong();
 }
 
@@ -64,45 +71,27 @@ std::list<Place> find_path(const Map& map) {
             return std::list<Place>();
 
         for (const auto& place : map.items[i])
-            rooms[place].items.push_back(i);
+            rooms[place].items[i] = true;
     }
 
     std::queue<Vertex> queue;
     auto queued = std::make_unique<std::bitset<MAX_ROOMS*(2UL << MAX_ITEMS)>>();
-    // std::vector<bool> queued(map.places * (2 << MAX_ITEMS));
     std::bitset<MAX_ITEMS> allItems = (1 << map.items.size()) - 1;
 
-    queue.emplace(VertexID(map.start, 0), std::list<Place>());
+    queue.emplace(VertexID(map.start, rooms[map.start].items), std::list<Place>());
     (*queued)[getVertexIDIndex(queue.front().first)] = true;
 
     for (; !queue.empty(); queue.pop()) {
         auto& current = queue.front();
 
-        if (current.second.size() == 0 || current.second.back() != current.first.first)
-            current.second.push_back(current.first.first);
+        current.second.push_back(current.first.first);
 
-        if (current.first.first == map.end && (current.first.second ^ allItems).none())
+        if (current.first.first == map.end && current.first.second == allItems)
             return current.second;
 
         for (const auto& neighbor : rooms[current.first.first].neighbors) {
-            VertexID neighborID(neighbor, current.first.second);
-
-            if (!(*queued)[getVertexIDIndex(neighborID)]) {
-                queue.emplace(neighborID, current.second);
-                (*queued)[getVertexIDIndex(neighborID)] = true;
-            }
-        }
-
-        for (const auto& item : rooms[current.first.first].items) {
-            /*
-            if (current.first.second[item])
-                continue;
-            */
-
-            auto items = current.first.second;
-            items[item] = true;
-
-            VertexID neighborID(current.first.first, items);
+            auto items = current.first.second | rooms[neighbor].items;
+            VertexID neighborID(neighbor, items);
 
             if (!(*queued)[getVertexIDIndex(neighborID)]) {
                 queue.emplace(neighborID, current.second);

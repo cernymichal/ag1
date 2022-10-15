@@ -2,7 +2,7 @@
 #include <iostream>
 #include <utility>
 
-#include "path.cpp"
+#include "pathBFS.cpp"
 
 using TestCase = std::pair<size_t, Map>;
 
@@ -21,6 +21,7 @@ int main() {
         auto sol = find_path(examples[i].second);
         if (sol.size() != examples[i].first) {
             std::cout << "Wrong answer for map " << i << " - expected: " << examples[i].first << " got: " << sol.size() << std::endl;
+            printList(sol);
             fail++;
         }
     }

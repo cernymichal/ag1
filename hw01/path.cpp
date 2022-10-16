@@ -142,36 +142,41 @@ public:
         if (!initializeRooms())
             return std::list<Place>();
 
-        queue.reserve(64);
+        queue.reserve(128);
+        queuePointers.reserve(128);
         paths.reserve(256);
 
-        queue[{map.start, rooms[map.start].items}] = 1;
+        queue.emplace_back(std::make_unique<Vertex>(VertexID(map.start, rooms[map.start].items), 1));
 
         while (!queue.empty()) {
-            auto& current = *std::min_element(queue.begin(), queue.end(), vertexCompare());
-            rooms[current.first.first].visited[current.first.second.to_ulong()] = true;
+            std::pop_heap(queue.begin(), queue.end(), vertexCompare());
+            auto current = std::move(queue.back());
+            queue.pop_back();
+            queuePointers.erase(current->first);
 
-            if (current.first.first == map.end && current.first.second == allItems)
+            rooms[current->first.first].visited[current->first.second.to_ulong()] = true;
+
+            if (current->first.first == map.end && current->first.second == allItems)
                 return buildPath();
 
-            if ((current.first.second | rooms[map.end].items) == allItems)
-                enqueue(current, {map.end, allItems});
+            if ((current->first.second | rooms[map.end].items) == allItems)
+                enqueue(*current, {map.end, allItems});
             else {
                 for (size_t i = 0; i < itemCount; i++) {
-                    if (current.first.second[i])
+                    if (current->first.second[i])
                         continue;
 
                     for (const auto& place : map.items[i]) {
-                        auto items = current.first.second | rooms[place].items;
+                        auto items = current->first.second | rooms[place].items;
                         VertexID placeID(place, items);
 
                         if (!rooms[placeID.first].visited[placeID.second.to_ulong()])
-                            enqueue(current, placeID);
+                            enqueue(*current, placeID);
                     }
                 }
             }
 
-            queue.erase(current.first);
+            std::make_heap(queue.begin(), queue.end(), vertexCompare());
         }
 
         return std::list<Place>();
@@ -186,8 +191,8 @@ private:
     };
 
     struct vertexCompare {
-        bool operator()(const Vertex& left, const Vertex& right) const {
-            return left.second < right.second;
+        bool operator()(const std::unique_ptr<Vertex>& left, const std::unique_ptr<Vertex>& right) const {
+            return left->second > right->second;
         }
     };
 
@@ -195,7 +200,8 @@ private:
     std::vector<Room> rooms;
     size_t itemCount;
 
-    std::unordered_map<VertexID, size_t> queue;
+    std::vector<std::unique_ptr<Vertex>> queue;
+    std::unordered_map<VertexID, Vertex*> queuePointers;
     std::unordered_map<std::pair<Place, Place>, std::list<Place>> paths;
     std::bitset<MAX_ITEMS> allItems;
 
@@ -272,8 +278,13 @@ private:
 
         auto newPathLength = path.size() + current.second - 1;
 
-        if (queue.find(target) == queue.end() || queue[target] > newPathLength) {
-            queue[target] = newPathLength;
+        if (queuePointers.find(target) == queuePointers.end()) {
+            queue.emplace_back(std::make_unique<Vertex>(target, newPathLength));
+            queuePointers[target] = queue.back().get();
+            rooms[target.first].predecessors[target.second.to_ulong()] = current.first;
+        }
+        else if (queuePointers[target]->second > newPathLength) {
+            queuePointers[target]->second = newPathLength;
             rooms[target.first].predecessors[target.second.to_ulong()] = current.first;
         }
     }
@@ -301,7 +312,7 @@ private:
 };
 
 std::list<Place> find_path(const Map& map) {
-    if (map.items.size() > 6 || map.places >= 6000 || true)
+    if (map.items.size() > 6)
         return GrinchDijkstra(map)();
     else
         return GrinchBFS(map)();

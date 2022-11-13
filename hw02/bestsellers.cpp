@@ -18,13 +18,15 @@
 
 #include "treeviz.cpp"
 
-#define PRINT_TREE() printTree<TreeNode>("", m_treeTop, false)
+#define PRINT_TREE(x) x->print()
+#define PRINT(x) std::cout << x << std::endl
 
 #endif
 
 #ifdef __PROGTEST__
 
 #define PRINT_TREE()
+#define PRINT(x)
 
 #endif
 
@@ -39,7 +41,7 @@ public:
 
     // The total number of tracked products
     size_t products() const {
-        // return m_products.size();
+        return m_products.size();
 
         if (!m_treeTop)
             return 0;
@@ -48,7 +50,7 @@ public:
     }
 
     void sell(const Product& product, size_t amount) {
-        // std::cout << std::endl << "sell " << amount << " " << product << std::endl;
+        // PRINT(std::endl << "sell " << amount << " " << product);
 
         const auto productIter = m_products.find(product);
         TreeNode* node = nullptr;
@@ -64,13 +66,16 @@ public:
         else {
             node = (*productIter).second;
             node->m_sold += amount;
+            // PRINT(std::endl
+            //       << "=============================================" << std::endl
+            //       << "remove " << product);
+            // PRINT_TREE(this);
             removeNode(node);
+            // PRINT_TREE(this);
             insertNode(m_treeTop, node);
         }
 
         // TODO AVL
-
-        //PRINT_TREE();
     }
 
     // The most sold product has rank 1
@@ -118,6 +123,14 @@ public:
         return 0;
     }
 
+#ifndef __PROGTEST__
+
+    void print() const {
+        printTree<TreeNode>("", m_treeTop, false);
+    }
+
+#endif
+
 private:
     struct TreeNode {
         const Product m_product;
@@ -153,6 +166,9 @@ private:
             m_parent = nullptr;
             m_leftChild = nullptr;
             m_rightChild = nullptr;
+            m_subTreeCount = 1;
+            m_subTreeLevels = 0;
+            // TODO sum
         }
 
         void replaceWithPredecessor(TreeNode* node) {
@@ -164,6 +180,9 @@ private:
             if (node->m_leftChild) {
                 node->m_leftChild->m_parent = node->m_parent;
                 node->m_leftChild->fixParentChild(node);
+            }
+            else if (node->m_parent != this) {
+                node->m_parent->m_rightChild = nullptr;
             }
 
             node->m_parent = m_parent;
@@ -230,10 +249,12 @@ private:
 
         if (predecessor != node->m_parent)
             node->replaceWithPredecessor(predecessor);
-
         else if (node->m_rightChild) {
             node->m_rightChild->m_parent = node->m_parent;
             node->m_rightChild->fixParentChild(node);
+
+            if (!m_treeTop)
+                m_treeTop = node->m_rightChild;
         }
         else if (node->m_parent) {
             if (node->m_parent->m_leftChild == node)

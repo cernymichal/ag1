@@ -50,8 +50,6 @@ public:
     }
 
     void sell(const Product& product, size_t amount) {
-        // PRINT(std::endl << "sell " << amount << " " << product);
-
         const auto productIter = m_products.find(product);
         TreeNode* node = nullptr;
 
@@ -66,16 +64,9 @@ public:
         else {
             node = (*productIter).second;
             node->m_sold += amount;
-            // PRINT(std::endl
-            //       << "=============================================" << std::endl
-            //       << "remove " << product);
-            // PRINT_TREE(this);
             removeNode(node);
-            // PRINT_TREE(this);
             insertNode(m_treeTop, node);
         }
-
-        // TODO AVL
     }
 
     // The most sold product has rank 1
@@ -139,8 +130,8 @@ private:
         TreeNode* m_leftChild = nullptr;
         TreeNode* m_rightChild = nullptr;
         size_t m_subTreeSumSold;
-        size_t m_subTreeLevels = 0;
-        size_t m_subTreeCount = 1;  // with self
+        size_t m_subTreeLevels = 1;  // with self
+        size_t m_subTreeCount = 1;   // with self
 
         TreeNode(const Product& product, size_t sold) : m_product(product), m_sold(sold) {
         }
@@ -167,7 +158,7 @@ private:
             m_leftChild = nullptr;
             m_rightChild = nullptr;
             m_subTreeCount = 1;
-            m_subTreeLevels = 0;
+            m_subTreeLevels = 1;
             // TODO sum
         }
 
@@ -189,6 +180,7 @@ private:
             node->m_leftChild = m_leftChild;
             node->m_rightChild = m_rightChild;
             node->m_subTreeCount = m_subTreeCount;
+            node->m_subTreeLevels = m_subTreeLevels;
 
             node->fixChildrenParent();
             node->fixParentChild(this);
@@ -228,21 +220,48 @@ private:
         if (*next == nullptr) {
             *next = toInsert;
             toInsert->m_parent = current;
+            if (current->m_subTreeLevels == 1)
+                incrementLayers(toInsert);
         }
         else
             insertNode(*next, toInsert);
     }
 
-    // doesnt delete node!
-    void removeNode(TreeNode* node) {
+    void incrementLayers(TreeNode* current) {
+        if (!current->m_parent)
+            return;
+
+        if (current->m_parent->m_subTreeLevels >= current->m_subTreeLevels + 1)
+            return;
+
         // TODO AVL
 
+        current->m_parent->m_subTreeLevels = current->m_subTreeLevels + 1;
+        incrementLayers(current->m_parent);
+    }
+
+    void decrementLayers(TreeNode* current) {
+        if (!current->m_parent)
+            return;
+
+        if ((current->m_parent->m_leftChild == current && current->m_parent->m_rightChild && current->m_parent->m_rightChild->m_subTreeLevels >= current->m_subTreeLevels) || (current->m_parent->m_rightChild == current && current->m_parent->m_leftChild && current->m_parent->m_leftChild->m_subTreeLevels >= current->m_subTreeLevels))
+            return;
+
+        // TODO AVL
+
+        current->m_parent->m_subTreeLevels--;
+        decrementLayers(current->m_parent);
+    }
+
+    // doesnt delete node!
+    void removeNode(TreeNode* node) {
         auto predecessor = findPredecessor(node);
 
         if (!predecessor)
             predecessor = node->m_parent;
 
         decrementCountUpwards(predecessor);
+        decrementLayers(predecessor);
 
         if (node == m_treeTop)
             m_treeTop = predecessor;

@@ -94,17 +94,13 @@ public:
     // The same but sum over interval of products (including from and to)
     // It must hold: sold(x) == sold(x, x)
     size_t sold(size_t from, size_t to) const {
-        // TODO optimize
-
         if (to < from)
             throw std::out_of_range("rank interval ill formed");
 
-        size_t sum = 0;
-        for (size_t i = from; i <= to; i++) {
-            sum += findByRank(i)->m_sold;
-        }
+        auto leftOfFrom = sumSoldLeft(from, false);
+        auto leftOfTo = sumSoldLeft(to);
 
-        return sum;
+        return leftOfTo - leftOfFrom;
     }
 
     // Bonus only, ignore if you are not interested in bonus
@@ -140,7 +136,7 @@ private:
         int m_subTreeDepth = 1;       // with self
         unsigned m_subTreeCount = 1;  // with self
 
-        TreeNode(const Product& product, size_t sold) : m_product(product), m_sold(sold) {
+        TreeNode(const Product& product, size_t sold) : m_product(product), m_sold(sold), m_subTreeSumSold(sold) {
         }
 
         ~TreeNode() {
@@ -172,6 +168,18 @@ private:
             return m_rightChild->m_subTreeDepth;
         }
 
+        size_t leftSubTreeSumSold() const {
+            if (!m_leftChild)
+                return 0;
+            return m_leftChild->m_subTreeSumSold;
+        }
+
+        size_t rightSubTreeSumSold() const {
+            if (!m_rightChild)
+                return 0;
+            return m_rightChild->m_subTreeSumSold;
+        }
+
         int sign() const {
             return rightSubTreeDepth() - leftSubTreeDepth();
         }
@@ -182,7 +190,7 @@ private:
             m_rightChild = nullptr;
             m_subTreeCount = 1;
             m_subTreeDepth = 1;
-            // TODO sum
+            m_subTreeSumSold = m_sold;
         }
 
         void replaceWithPredecessor(TreeNode* node) {
@@ -263,16 +271,9 @@ private:
         }
 
         void recalculate() {
-            recalculateCount();
-            recalculateDepth();
-        }
-
-        void recalculateCount() {
             m_subTreeCount = leftSubTreeCount() + rightSubTreeCount() + 1;
-        }
-
-        void recalculateDepth() {
             m_subTreeDepth = max(leftSubTreeDepth(), rightSubTreeDepth()) + 1;
+            m_subTreeSumSold = leftSubTreeSumSold() + rightSubTreeSumSold() + m_sold;
         }
     };
 
@@ -296,78 +297,41 @@ private:
             insertNode(*next, toInsert);
     }
 
-    /*
-
-    void incrementDepth(TreeNode* current) {
-        if (!current->m_parent)
-            return;
-
-        if (current->m_parent->m_subTreeDepth >= current->m_subTreeDepth + 1)
-            return;
-
-        AVLRotate(current->m_parent);
-
-        if (!current->m_parent)
-            return;
-
-        incrementDepth(current->m_parent);
-    }
-
-    void decrementDepth(TreeNode* current) {
-        if (!current->m_parent)
-            return;
-
-        if ((current->m_parent->m_leftChild == current && current->m_parent->m_rightChild && current->m_parent->m_rightChild->m_subTreeDepth >= current->m_subTreeDepth) || (current->m_parent->m_rightChild == current && current->m_parent->m_leftChild && current->m_parent->m_leftChild->m_subTreeDepth >= current->m_subTreeDepth))
-            return;
-
-        AVLRotate(current->m_parent);
-
-        if (!current->m_parent)
-            return;
-
-        decrementDepth(current->m_parent);
-    }
-
-    */
-
     void rebalance(TreeNode* current) {
         if (!current)
             return;
 
-        AVLRotate(current);
-        rebalance(current->m_parent);
-    }
-
-    void AVLRotate(TreeNode* node) {
-        switch (node->sign()) {
+        switch (current->sign()) {
             case -2:
-                switch (node->m_leftChild->sign()) {
+                switch (current->m_leftChild->sign()) {
                     case -1:
-                        node->m_leftChild->rotateR();
+                        current->m_leftChild->rotateR();
                         break;
                     case +1:
-                        node->m_leftChild->m_rightChild->rotateLR();
+                        current->m_leftChild->m_rightChild->rotateLR();
                         break;
                 }
                 break;
             case +2:
-                switch (node->m_rightChild->sign()) {
+                switch (current->m_rightChild->sign()) {
                     case -1:
-                        node->m_rightChild->m_leftChild->rotateRL();
+                        current->m_rightChild->m_leftChild->rotateRL();
                         break;
                     case +1:
-                        node->m_rightChild->rotateL();
+                        current->m_rightChild->rotateL();
                         break;
                 }
                 break;
         }
 
-        node->recalculate();
+        current->recalculate();
 
-        if (!node->m_parent)
-            m_treeTop = node;
-        else if (!node->m_parent->m_parent)
-            m_treeTop = node->m_parent;
+        if (!current->m_parent)
+            m_treeTop = current;
+        else if (!current->m_parent->m_parent)
+            m_treeTop = current->m_parent;
+
+        rebalance(current->m_parent);
     }
 
     // doesnt delete node!
@@ -450,5 +414,25 @@ private:
             return findByRank(rank, leftCount, current->m_leftChild);
 
         return findByRank(rank, left, current->m_rightChild);
+    }
+
+    // throws std::out_of_range when theres no product with rank
+    size_t sumSoldLeft(size_t rank, bool includeSearched = true) const {
+        if (rank == 0 || rank > products())
+            throw std::out_of_range("rank out of range");
+
+        return sumSoldLeft(rank, 0, m_treeTop, includeSearched);
+    }
+
+    size_t sumSoldLeft(size_t rank, size_t leftCount, TreeNode* current, bool includeSearched) const {
+        const auto left = leftCount + current->leftSubTreeCount() + 1;
+
+        if (left == rank)
+            return current->leftSubTreeSumSold() + (includeSearched ? current->m_sold : 0);
+
+        if (left > rank)
+            return sumSoldLeft(rank, leftCount, current->m_leftChild, includeSearched);
+
+        return sumSoldLeft(rank, left, current->m_rightChild, includeSearched) + current->leftSubTreeSumSold() + current->m_sold;
     }
 };

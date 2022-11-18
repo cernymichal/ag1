@@ -30,6 +30,13 @@
 
 #endif
 
+template <typename T>
+inline T max(const T& a, const T& b) {
+    if (a >= b)
+        return a;
+    return b;
+}
+
 template <typename Product>
 class Bestsellers {
     struct TreeNode;
@@ -72,7 +79,7 @@ public:
     // The most sold product has rank 1
     size_t rank(const Product& product) const {
         const TreeNode* productNode = m_products.at(product);
-        return productNode->leftSubTreeCount() + 1 + sumRankUpwards(productNode);
+        return productNode->leftSubTreeCount() + 1 + countRank(productNode);
     }
 
     const Product& product(size_t rank) const {
@@ -130,8 +137,8 @@ private:
         TreeNode* m_leftChild = nullptr;
         TreeNode* m_rightChild = nullptr;
         size_t m_subTreeSumSold;
-        size_t m_subTreeLevels = 1;  // with self
-        size_t m_subTreeCount = 1;   // with self
+        int m_subTreeDepth = 1;       // with self
+        unsigned m_subTreeCount = 1;  // with self
 
         TreeNode(const Product& product, size_t sold) : m_product(product), m_sold(sold) {
         }
@@ -153,12 +160,28 @@ private:
             return m_rightChild->m_subTreeCount;
         }
 
+        size_t leftSubTreeDepth() const {
+            if (!m_leftChild)
+                return 0;
+            return m_leftChild->m_subTreeDepth;
+        }
+
+        size_t rightSubTreeDepth() const {
+            if (!m_rightChild)
+                return 0;
+            return m_rightChild->m_subTreeDepth;
+        }
+
+        int sign() const {
+            return rightSubTreeDepth() - leftSubTreeDepth();
+        }
+
         void clear() {
             m_parent = nullptr;
             m_leftChild = nullptr;
             m_rightChild = nullptr;
             m_subTreeCount = 1;
-            m_subTreeLevels = 1;
+            m_subTreeDepth = 1;
             // TODO sum
         }
 
@@ -180,10 +203,46 @@ private:
             node->m_leftChild = m_leftChild;
             node->m_rightChild = m_rightChild;
             node->m_subTreeCount = m_subTreeCount;
-            node->m_subTreeLevels = m_subTreeLevels;
+            node->m_subTreeDepth = m_subTreeDepth;
 
             node->fixChildrenParent();
             node->fixParentChild(this);
+        }
+
+        void rotateR() {
+            m_parent->m_leftChild = m_rightChild;
+            m_rightChild = m_parent;
+            m_parent = m_parent->m_parent;
+
+            fixChildrenParent();
+            m_rightChild->fixChildrenParent();
+            fixParentChild(m_rightChild);
+
+            m_rightChild->recalculate();
+            recalculate();
+        }
+
+        void rotateL() {
+            m_parent->m_rightChild = m_leftChild;
+            m_leftChild = m_parent;
+            m_parent = m_parent->m_parent;
+
+            fixChildrenParent();
+            m_leftChild->fixChildrenParent();
+            fixParentChild(m_leftChild);
+
+            m_leftChild->recalculate();
+            recalculate();
+        }
+
+        void rotateLR() {
+            rotateL();
+            rotateR();
+        }
+
+        void rotateRL() {
+            rotateR();
+            rotateL();
         }
 
         void fixParentChild(TreeNode* oldNode) {
@@ -202,6 +261,19 @@ private:
             if (m_rightChild)
                 m_rightChild->m_parent = this;
         }
+
+        void recalculate() {
+            recalculateCount();
+            recalculateDepth();
+        }
+
+        void recalculateCount() {
+            m_subTreeCount = leftSubTreeCount() + rightSubTreeCount() + 1;
+        }
+
+        void recalculateDepth() {
+            m_subTreeDepth = max(leftSubTreeDepth(), rightSubTreeDepth()) + 1;
+        }
     };
 
     TreeNode* m_treeTop = nullptr;  // AVL BST
@@ -209,8 +281,6 @@ private:
 
     void insertNode(TreeNode* current, TreeNode* toInsert) {
         TreeNode** next;
-
-        current->m_subTreeCount++;
 
         if (current->m_sold <= toInsert->m_sold)
             next = &current->m_leftChild;
@@ -220,55 +290,107 @@ private:
         if (*next == nullptr) {
             *next = toInsert;
             toInsert->m_parent = current;
-            if (current->m_subTreeLevels == 1)
-                incrementLayers(toInsert);
+            rebalance(toInsert);
         }
         else
             insertNode(*next, toInsert);
     }
 
-    void incrementLayers(TreeNode* current) {
+    /*
+
+    void incrementDepth(TreeNode* current) {
         if (!current->m_parent)
             return;
 
-        if (current->m_parent->m_subTreeLevels >= current->m_subTreeLevels + 1)
+        if (current->m_parent->m_subTreeDepth >= current->m_subTreeDepth + 1)
             return;
 
-        // TODO AVL
+        AVLRotate(current->m_parent);
 
-        current->m_parent->m_subTreeLevels = current->m_subTreeLevels + 1;
-        incrementLayers(current->m_parent);
+        if (!current->m_parent)
+            return;
+
+        incrementDepth(current->m_parent);
     }
 
-    void decrementLayers(TreeNode* current) {
+    void decrementDepth(TreeNode* current) {
         if (!current->m_parent)
             return;
 
-        if ((current->m_parent->m_leftChild == current && current->m_parent->m_rightChild && current->m_parent->m_rightChild->m_subTreeLevels >= current->m_subTreeLevels) || (current->m_parent->m_rightChild == current && current->m_parent->m_leftChild && current->m_parent->m_leftChild->m_subTreeLevels >= current->m_subTreeLevels))
+        if ((current->m_parent->m_leftChild == current && current->m_parent->m_rightChild && current->m_parent->m_rightChild->m_subTreeDepth >= current->m_subTreeDepth) || (current->m_parent->m_rightChild == current && current->m_parent->m_leftChild && current->m_parent->m_leftChild->m_subTreeDepth >= current->m_subTreeDepth))
             return;
 
-        // TODO AVL
+        AVLRotate(current->m_parent);
 
-        current->m_parent->m_subTreeLevels--;
-        decrementLayers(current->m_parent);
+        if (!current->m_parent)
+            return;
+
+        decrementDepth(current->m_parent);
+    }
+
+    */
+
+    void rebalance(TreeNode* current) {
+        if (!current)
+            return;
+
+        AVLRotate(current);
+        rebalance(current->m_parent);
+    }
+
+    void AVLRotate(TreeNode* node) {
+        switch (node->sign()) {
+            case -2:
+                switch (node->m_leftChild->sign()) {
+                    case -1:
+                        node->m_leftChild->rotateR();
+                        break;
+                    case +1:
+                        node->m_leftChild->m_rightChild->rotateLR();
+                        break;
+                }
+                break;
+            case +2:
+                switch (node->m_rightChild->sign()) {
+                    case -1:
+                        node->m_rightChild->m_leftChild->rotateRL();
+                        break;
+                    case +1:
+                        node->m_rightChild->rotateL();
+                        break;
+                }
+                break;
+        }
+
+        node->recalculate();
+
+        if (!node->m_parent)
+            m_treeTop = node;
+        else if (!node->m_parent->m_parent)
+            m_treeTop = node->m_parent;
     }
 
     // doesnt delete node!
     void removeNode(TreeNode* node) {
         auto predecessor = findPredecessor(node);
+        TreeNode* rebalanceStart = nullptr;
 
         if (!predecessor)
             predecessor = node->m_parent;
 
-        decrementCountUpwards(predecessor);
-        decrementLayers(predecessor);
-
         if (node == m_treeTop)
             m_treeTop = predecessor;
 
-        if (predecessor != node->m_parent)
+        if (predecessor != node->m_parent) {
+            if (predecessor->m_parent == node)
+                rebalanceStart = predecessor;
+            else
+                rebalanceStart = predecessor->m_parent == node ? predecessor : predecessor->m_parent;
             node->replaceWithPredecessor(predecessor);
+        }
+
         else if (node->m_rightChild) {
+            rebalanceStart = node->m_rightChild;
             node->m_rightChild->m_parent = node->m_parent;
             node->m_rightChild->fixParentChild(node);
 
@@ -276,11 +398,14 @@ private:
                 m_treeTop = node->m_rightChild;
         }
         else if (node->m_parent) {
+            rebalanceStart = node->m_parent;
             if (node->m_parent->m_leftChild == node)
                 node->m_parent->m_leftChild = nullptr;
             else if (node->m_parent->m_rightChild == node)
                 node->m_parent->m_rightChild = nullptr;
         }
+
+        rebalance(rebalanceStart);
 
         node->clear();
     }
@@ -297,19 +422,14 @@ private:
         return node;
     }
 
-    void decrementCountUpwards(TreeNode* node) {
-        for (; node; node = node->m_parent)
-            node->m_subTreeCount--;
-    }
-
-    size_t sumRankUpwards(const TreeNode* node) const {
+    size_t countRank(const TreeNode* node) const {
         if (!node->m_parent)
             return 0;
 
         if (node->m_parent->m_leftChild == node)
-            return sumRankUpwards(node->m_parent);
+            return countRank(node->m_parent);
 
-        return node->m_parent->leftSubTreeCount() + 1 + sumRankUpwards(node->m_parent);
+        return node->m_parent->leftSubTreeCount() + 1 + countRank(node->m_parent);
     }
 
     // throws std::out_of_range when theres no product with rank

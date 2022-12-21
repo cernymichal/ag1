@@ -29,11 +29,9 @@ struct TreeProblem {
 
 #endif
 
-#define NULL_MEMO (uint64_t)(-1)
-
 class Solver {
 public:
-    Solver(const TreeProblem& problem) : m_problem(problem), m_connections(problem.gifts.size()), m_memo(memoIndex(problem.gifts.size(), 0), NULL_MEMO) {
+    Solver(const TreeProblem& problem) : m_problem(problem), m_connections(problem.gifts.size()), m_memo(memoIndex(problem.gifts.size(), 0), 0) {
         for (const auto& connection : m_problem.connections) {
             m_connections[connection.first].push_back(connection.second);
             m_connections[connection.second].push_back(connection.first);
@@ -44,43 +42,79 @@ public:
         if (m_problem.gifts.empty())
             return 0;
 
-        return maxGuardedGifts(0, 0, 0);
+        std::queue<std::pair<ChristmasTree, ChristmasTree>> queue;
+        queue.push({0, 0});
+
+        for (; !queue.empty(); queue.pop()) {
+            const auto& current = queue.front();
+            m_toSolve.push(current.first);
+
+            for (const auto& connection : m_connections[current.first]) {
+                if (connection == current.second)
+                    continue;
+
+                queue.emplace(std::pair<ChristmasTree, ChristmasTree>(connection, current.first));
+            }
+        }
+
+        solve();
+
+        uint64_t max = 0;
+        for (int i = 0; i <= m_problem.max_group_size; i++)
+            max = std::max(max, m_memo[memoIndex(0, i)]);
+
+        return max;
     }
 
 private:
     const TreeProblem& m_problem;
     std::vector<std::vector<ChristmasTree>> m_connections;
     std::vector<uint64_t> m_memo;
+    std::stack<ChristmasTree> m_toSolve;
 
     inline size_t memoIndex(const ChristmasTree& tree, const int currentGroupSize) const {
         return tree * (m_problem.max_group_size + 1) + currentGroupSize;
     }
 
-    uint64_t maxGuardedGifts(const ChristmasTree& tree, const ChristmasTree& cameFrom, const int currentGroupSize) {
-        if (m_memo[memoIndex(tree, currentGroupSize)] != NULL_MEMO)
-            return m_memo[memoIndex(tree, currentGroupSize)];
+    void solve() {
+        for (; !m_toSolve.empty(); m_toSolve.pop()) {
+            const auto& current = m_toSolve.top();
 
-        uint64_t sumWithGuard = 0;
-        uint64_t sumWithoutGuard = 0;
+            // without guard
+            for (const auto& connection : m_connections[current]) {
+                uint64_t max = 0;
+                for (int i = 0; i <= m_problem.max_group_size; i++)
+                    max = std::max(max, m_memo[memoIndex(connection, i)]);
 
-        // with guard
-        if (currentGroupSize < m_problem.max_group_size) {
-            sumWithGuard = m_problem.gifts[tree];
-            for (const auto& connection : m_connections[tree]) {
-                if (connection != cameFrom)
-                    sumWithGuard += maxGuardedGifts(connection, tree, currentGroupSize + 1);
+                m_memo[memoIndex(current, 0)] += max;
+            }
+
+            // with one guard
+            m_memo[memoIndex(current, 1)] = m_problem.gifts[current];
+            for (const auto& connection : m_connections[current])
+                m_memo[memoIndex(current, 1)] += m_memo[memoIndex(connection, 0)];
+
+            // with two guards
+            if (m_problem.max_group_size == 2) {
+                m_memo[memoIndex(current, 2)] = m_problem.gifts[current];
+
+                ChristmasTree maxGuardedNeighbour = m_connections[current][0];
+                __int128_t maxGuardedNeighbourDiff = 0;
+                for (const auto& connection : m_connections[current]) {
+                    m_memo[memoIndex(current, 2)] += m_memo[memoIndex(connection, 0)];
+
+                    __int128_t diff = (__int128_t)m_memo[memoIndex(connection, 1)] - (__int128_t)m_memo[memoIndex(connection, 0)];
+
+                    if (diff > maxGuardedNeighbourDiff) {
+                        maxGuardedNeighbour = connection;
+                        maxGuardedNeighbourDiff = diff;
+                    }
+                }
+
+                m_memo[memoIndex(current, 2)] -= m_memo[memoIndex(maxGuardedNeighbour, 0)];
+                m_memo[memoIndex(current, 2)] += m_memo[memoIndex(maxGuardedNeighbour, 1)];
             }
         }
-
-        // without guard
-        for (const auto& connection : m_connections[tree]) {
-            if (connection != cameFrom)
-                sumWithoutGuard += maxGuardedGifts(connection, tree, 0);
-        }
-
-        auto max = std::max(sumWithGuard, sumWithoutGuard);
-        m_memo[memoIndex(tree, currentGroupSize)] = max;
-        return max;
     }
 };
 
